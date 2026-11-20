@@ -1,23 +1,28 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { CalendarDays, LayoutDashboard, LogOut, ShieldCheck, SlidersHorizontal, UserRound } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, LogOut, Megaphone, ShieldCheck, SlidersHorizontal, UserRound } from 'lucide-react';
 import { Logo } from './Logo';
 import { getDisplayName, useAuth } from '../lib/auth';
 import { firstName } from '../lib/progress';
+import { useSiteConfig } from '../lib/siteConfig';
+import type { SiteFeatures } from '../types/database';
 import '../styles/app.css';
 
-const LINKS = [
-  { to: '/painel', label: 'Painel', icon: LayoutDashboard },
-  { to: '/cronograma', label: 'Cronograma', icon: CalendarDays },
-  { to: '/perfil', label: 'Perfil', icon: UserRound },
+const LINKS: { to: string; label: string; icon: typeof LayoutDashboard; feature: keyof SiteFeatures }[] = [
+  { to: '/painel', label: 'Painel', icon: LayoutDashboard, feature: 'dashboard' },
+  { to: '/cronograma', label: 'Cronograma', icon: CalendarDays, feature: 'schedule' },
+  { to: '/perfil', label: 'Perfil', icon: UserRound, feature: 'profile' },
 ];
 
 export function AppLayout() {
   const { user, profile, isAdmin, signOut } = useAuth();
+  const { settings } = useSiteConfig();
   const displayName = getDisplayName(profile, user);
   const initial = (displayName.trim()[0] ?? 'E').toUpperCase();
+
+  const visibleLinks = LINKS.filter((l) => isAdmin || settings.features[l.feature]);
   const navLinks = isAdmin
-    ? [...LINKS, { to: '/admin', label: 'Admin', icon: ShieldCheck }]
-    : LINKS;
+    ? [...visibleLinks, { to: '/admin', label: 'Admin', icon: ShieldCheck }]
+    : visibleLinks;
 
   return (
     <div className="app-shell">
@@ -44,11 +49,7 @@ export function AppLayout() {
           <div className="app-user">
             <Link to="/perfil" className="app-user-link" title="Abrir perfil">
               <span className="app-avatar" aria-hidden="true">
-                {profile?.avatar_url ? (
-                  <img src={profile.avatar_url} alt="" />
-                ) : (
-                  initial
-                )}
+                {profile?.avatar_url ? <img src={profile.avatar_url} alt="" /> : initial}
               </span>
               <div className="app-user-info">
                 <strong>
@@ -79,6 +80,12 @@ export function AppLayout() {
 
       <main className="app-main">
         <div className="app-container">
+          {settings.announcement_enabled && settings.announcement_text && (
+            <div className="alert alert-info app-announcement" role="status">
+              <Megaphone size={17} />
+              <span>{settings.announcement_text}</span>
+            </div>
+          )}
           <Outlet />
         </div>
       </main>

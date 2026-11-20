@@ -6,12 +6,113 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[];
 
+export interface SiteFeatures {
+  schedule: boolean;
+  dashboard: boolean;
+  profile: boolean;
+  study_history: boolean;
+  exams_simulados: boolean;
+  essay_redacao: boolean;
+  question_bank: boolean;
+  community: boolean;
+}
+
 export type Database = {
   __InternalSupabase: {
     PostgrestVersion: '14.18';
   };
   public: {
     Tables: {
+      admin_audit_logs: {
+        Row: {
+          action: string;
+          admin_email: string | null;
+          admin_user_id: string;
+          created_at: string;
+          details: Json;
+          id: string;
+          outcome: 'success' | 'error';
+          target_label: string | null;
+          target_user_id: string | null;
+        };
+        Insert: {
+          action: string;
+          admin_email?: string | null;
+          admin_user_id: string;
+          created_at?: string;
+          details?: Json;
+          id?: string;
+          outcome: 'success' | 'error';
+          target_label?: string | null;
+          target_user_id?: string | null;
+        };
+        Update: {
+          action?: string;
+          admin_email?: string | null;
+          admin_user_id?: string;
+          created_at?: string;
+          details?: Json;
+          id?: string;
+          outcome?: 'success' | 'error';
+          target_label?: string | null;
+          target_user_id?: string | null;
+        };
+        Relationships: [];
+      };
+      admin_config: {
+        Row: {
+          admin_notes: string;
+          id: string;
+          log_auth_events: boolean;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          admin_notes?: string;
+          id?: string;
+          log_auth_events?: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          admin_notes?: string;
+          id?: string;
+          log_auth_events?: boolean;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Relationships: [];
+      };
+      auth_events: {
+        Row: {
+          actor_email: string | null;
+          created_at: string;
+          event_type: string;
+          id: string;
+          metadata: Json;
+          user_agent: string | null;
+          user_id: string | null;
+        };
+        Insert: {
+          actor_email?: string | null;
+          created_at?: string;
+          event_type: string;
+          id?: string;
+          metadata?: Json;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Update: {
+          actor_email?: string | null;
+          created_at?: string;
+          event_type?: string;
+          id?: string;
+          metadata?: Json;
+          user_agent?: string | null;
+          user_id?: string | null;
+        };
+        Relationships: [];
+      };
       profiles: {
         Row: {
           avatar_url: string | null;
@@ -20,6 +121,10 @@ export type Database = {
           id: string;
           onboarding_completed: boolean;
           role: 'student' | 'admin';
+          status: 'active' | 'suspended';
+          suspended_at: string | null;
+          suspended_by: string | null;
+          suspended_reason: string | null;
           updated_at: string;
           username: string | null;
         };
@@ -30,6 +135,10 @@ export type Database = {
           id: string;
           onboarding_completed?: boolean;
           role?: 'student' | 'admin';
+          status?: 'active' | 'suspended';
+          suspended_at?: string | null;
+          suspended_by?: string | null;
+          suspended_reason?: string | null;
           updated_at?: string;
           username?: string | null;
         };
@@ -40,8 +149,87 @@ export type Database = {
           id?: string;
           onboarding_completed?: boolean;
           role?: 'student' | 'admin';
+          status?: 'active' | 'suspended';
+          suspended_at?: string | null;
+          suspended_by?: string | null;
+          suspended_reason?: string | null;
           updated_at?: string;
           username?: string | null;
+        };
+        Relationships: [];
+      };
+      site_settings: {
+        Row: {
+          accent_color: string;
+          allow_public_signup: boolean;
+          announcement_enabled: boolean;
+          announcement_text: string;
+          favicon_url: string | null;
+          features: Json;
+          hero_cta_text: string;
+          hero_eyebrow: string;
+          hero_subtitle: string;
+          hero_title: string;
+          id: string;
+          institutional_tagline: string;
+          logo_url: string | null;
+          maintenance_message: string;
+          maintenance_mode: boolean;
+          primary_color: string;
+          show_cta: boolean;
+          show_features: boolean;
+          show_how_it_works: boolean;
+          site_name: string;
+          updated_at: string;
+          updated_by: string | null;
+        };
+        Insert: {
+          accent_color?: string;
+          allow_public_signup?: boolean;
+          announcement_enabled?: boolean;
+          announcement_text?: string;
+          favicon_url?: string | null;
+          features?: Json;
+          hero_cta_text?: string;
+          hero_eyebrow?: string;
+          hero_subtitle?: string;
+          hero_title?: string;
+          id?: string;
+          institutional_tagline?: string;
+          logo_url?: string | null;
+          maintenance_message?: string;
+          maintenance_mode?: boolean;
+          primary_color?: string;
+          show_cta?: boolean;
+          show_features?: boolean;
+          show_how_it_works?: boolean;
+          site_name?: string;
+          updated_at?: string;
+          updated_by?: string | null;
+        };
+        Update: {
+          accent_color?: string;
+          allow_public_signup?: boolean;
+          announcement_enabled?: boolean;
+          announcement_text?: string;
+          favicon_url?: string | null;
+          features?: Json;
+          hero_cta_text?: string;
+          hero_eyebrow?: string;
+          hero_subtitle?: string;
+          hero_title?: string;
+          id?: string;
+          institutional_tagline?: string;
+          logo_url?: string | null;
+          maintenance_message?: string;
+          maintenance_mode?: boolean;
+          primary_color?: string;
+          show_cta?: boolean;
+          show_features?: boolean;
+          show_how_it_works?: boolean;
+          site_name?: string;
+          updated_at?: string;
+          updated_by?: string | null;
         };
         Relationships: [];
       };
@@ -223,7 +411,28 @@ export type Database = {
       [_ in never]: never;
     };
     Functions: {
-      [_ in never]: never;
+      admin_list_active_sessions: {
+        Args: never;
+        Returns: {
+          aal: string;
+          created_at: string;
+          id: string;
+          ip: string;
+          not_after: string;
+          refreshed_at: string;
+          updated_at: string;
+          user_agent: string;
+          user_id: string;
+        }[];
+      };
+      admin_revoke_session: {
+        Args: { target_session_id: string };
+        Returns: string;
+      };
+      admin_revoke_user_sessions: {
+        Args: { target_user_id: string };
+        Returns: number;
+      };
     };
     Enums: {
       [_ in never]: never;
@@ -236,6 +445,10 @@ export type Database = {
 
 export type Profile = Database['public']['Tables']['profiles']['Row'];
 export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
+export type SiteSettingsRow = Database['public']['Tables']['site_settings']['Row'];
+export type AdminConfigRow = Database['public']['Tables']['admin_config']['Row'];
+export type AuthEventRow = Database['public']['Tables']['auth_events']['Row'];
+export type AdminAuditLogRow = Database['public']['Tables']['admin_audit_logs']['Row'];
 export type StudyPreferencesRow = Database['public']['Tables']['study_preferences']['Row'];
 export type StudyPlanRow = Database['public']['Tables']['study_plans']['Row'];
 export type StudyActivityRow = Database['public']['Tables']['study_activities']['Row'];

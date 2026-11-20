@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppLayout } from './components/AppLayout';
-import { AdminRoute, GuestRoute, OnboardingRoute, PageLoader, ProtectedRoute } from './components/RouteGuards';
+import { AdminRoute, FeatureRoute, GuestRoute, OnboardingRoute, PageLoader, ProtectedRoute } from './components/RouteGuards';
 import { Landing } from './pages/Landing';
 
 const Login = lazy(() => import('./pages/auth/Login'));
@@ -69,11 +69,32 @@ export function App() {
               </ProtectedRoute>
             }
           >
-            <Route path="/painel" element={<Dashboard />} />
-            <Route path="/cronograma" element={<Schedule />} />
-            <Route path="/perfil" element={<Profile />} />
             <Route
-              path="/admin"
+              path="/painel"
+              element={
+                <FeatureRoute feature="dashboard" title="Painel">
+                  <Dashboard />
+                </FeatureRoute>
+              }
+            />
+            <Route
+              path="/cronograma"
+              element={
+                <FeatureRoute feature="schedule" title="Cronograma">
+                  <Schedule />
+                </FeatureRoute>
+              }
+            />
+            <Route
+              path="/perfil"
+              element={
+                <FeatureRoute feature="profile" title="Perfil">
+                  <Profile />
+                </FeatureRoute>
+              }
+            />
+            <Route
+              path="/admin/*"
               element={
                 <AdminRoute>
                   <Admin />

@@ -6,6 +6,7 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { PasswordMeter } from '../../components/PasswordMeter';
 import { useAuth } from '../../lib/auth';
+import { useSiteConfig } from '../../lib/siteConfig';
 import { useForm } from '../../lib/useForm';
 import { validateConfirm, validateEmail, validateName, validatePassword } from '../../lib/validation';
 
@@ -18,6 +19,7 @@ const VALIDATORS = {
 
 export default function Register() {
   const { signUp, resendConfirmation } = useAuth();
+  const { settings } = useSiteConfig();
   const navigate = useNavigate();
   const { values, bind, validate } = useForm({ name: '', email: '', password: '', confirm: '' }, VALIDATORS);
   const [error, setError] = useState('');
@@ -99,6 +101,30 @@ export default function Register() {
             Reenviar e-mail de confirmação
           </Button>
           <Link to="/entrar" state={{ email: confirmationEmail }} className="btn btn-primary btn-lg btn-block">
+            Ir para o login
+          </Link>
+        </div>
+      </AuthLayout>
+    );
+  }
+
+  if (!settings.allow_public_signup) {
+    return (
+      <AuthLayout
+        title="Cadastros temporariamente pausados"
+        subtitle="Novos cadastros públicos estão desativados pela administração no momento."
+        footer={
+          <>
+            Já tem uma conta? <Link to="/entrar">Entrar</Link>
+          </>
+        }
+      >
+        <div className="auth-form">
+          <div className="alert alert-info" role="status">
+            <AlertCircle size={18} />
+            <span>Se você já possui conta no {settings.site_name}, acesse normalmente pela tela de login.</span>
+          </div>
+          <Link to="/entrar" className="btn btn-primary btn-lg btn-block">
             Ir para o login
           </Link>
         </div>

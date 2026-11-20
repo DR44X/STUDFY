@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { useAuth } from '../lib/auth';
+import { useSiteConfig } from '../lib/siteConfig';
 import '../styles/landing.css';
 
 const NAV = [
@@ -24,6 +25,7 @@ const NAV = [
 
 export function Landing() {
   const { user } = useAuth();
+  const { settings } = useSiteConfig();
   const [menuOpen, setMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
 
@@ -112,24 +114,27 @@ export function Landing() {
       </header>
 
       <main>
+        {settings.announcement_enabled && settings.announcement_text && (
+          <div className="lp-container" style={{ paddingTop: 16 }}>
+            <div className="alert alert-info" role="status">
+              <Sparkles size={16} />
+              <span>{settings.announcement_text}</span>
+            </div>
+          </div>
+        )}
         <section className="lp-hero">
           <div className="lp-container lp-hero-inner">
             <div className="lp-hero-copy">
               <span className="lp-eyebrow">
-                <Sparkles size={14} /> Preparação para o ENEM
+                <Sparkles size={14} /> {settings.hero_eyebrow}
               </span>
-              <h1>
-                Seu futuro, <span className="lp-highlight">no seu ritmo.</span>
-              </h1>
-              <p className="lp-lead">
-                O Studfy monta um cronograma semanal a partir da sua rotina, das suas dificuldades e do seu objetivo.
-                Você abre, vê o que estudar hoje e segue em frente.
-              </p>
+              <h1>{settings.hero_title}</h1>
+              <p className="lp-lead">{settings.hero_subtitle}</p>
               <div className="lp-hero-cta">
-                <Link to={user ? '/painel' : '/cadastro'} className="btn btn-primary btn-lg">
-                  {user ? 'Ir para o painel' : 'Criar minha conta'} <ArrowRight size={18} />
+                <Link to={user ? '/painel' : settings.allow_public_signup ? '/cadastro' : '/entrar'} className="btn btn-primary btn-lg">
+                  {user ? 'Ir para o painel' : settings.allow_public_signup ? settings.hero_cta_text : 'Entrar na conta'} <ArrowRight size={18} />
                 </Link>
-                {!user && (
+                {!user && settings.allow_public_signup && (
                   <Link to="/entrar" className="btn btn-secondary btn-lg">
                     Já tenho conta
                   </Link>
@@ -148,7 +153,8 @@ export function Landing() {
           </div>
         </section>
 
-        <section className="lp-section" id="como-funciona">
+        {settings.show_how_it_works && (
+          <section className="lp-section" id="como-funciona">
           <div className="lp-container">
             <header className="lp-section-head">
               <span className="lp-kicker">Como funciona</span>
@@ -182,8 +188,10 @@ export function Landing() {
             </ol>
           </div>
         </section>
+        )}
 
-        <section className="lp-section lp-section-alt" id="recursos">
+        {settings.show_features && (
+          <section className="lp-section lp-section-alt" id="recursos">
           <div className="lp-container">
             <header className="lp-section-head">
               <span className="lp-kicker">Recursos</span>
@@ -213,25 +221,28 @@ export function Landing() {
             </div>
           </div>
         </section>
+        )}
 
-        <section className="lp-cta">
+        {settings.show_cta && (
+          <section className="lp-cta">
           <div className="lp-container">
             <div className="lp-cta-box">
               <h2>Comece hoje. No seu ritmo.</h2>
               <p>Crie sua conta e tenha seu cronograma de estudos para o ENEM em poucos minutos.</p>
-              <Link to={user ? '/painel' : '/cadastro'} className="btn btn-lg lp-cta-btn">
-                {user ? 'Ir para o painel' : 'Criar minha conta'} <ArrowRight size={18} />
+              <Link to={user ? '/painel' : settings.allow_public_signup ? '/cadastro' : '/entrar'} className="btn btn-lg lp-cta-btn">
+                {user ? 'Ir para o painel' : settings.allow_public_signup ? settings.hero_cta_text : 'Entrar'} <ArrowRight size={18} />
               </Link>
             </div>
           </div>
         </section>
+        )}
       </main>
 
       <footer className="lp-footer">
         <div className="lp-container lp-footer-inner">
           <div className="lp-footer-brand">
             <Logo size="sm" />
-            <p>Seu futuro, no seu ritmo.</p>
+            <p>{settings.institutional_tagline}</p>
           </div>
           <nav className="lp-footer-links" aria-label="Rodapé">
             <div>
@@ -247,7 +258,7 @@ export function Landing() {
           </nav>
         </div>
         <div className="lp-container lp-footer-bottom">
-          <span>© {new Date().getFullYear()} Studfy. Todos os direitos reservados.</span>
+          <span>© {new Date().getFullYear()} {settings.site_name}. Todos os direitos reservados.</span>
         </div>
       </footer>
     </div>

@@ -4,13 +4,16 @@ import { ActivityItem } from '../components/ActivityItem';
 import { ProgressBar, ProgressRing } from '../components/Progress';
 import { getSubject } from '../data/subjects';
 import { getDisplayName, useAuth } from '../lib/auth';
+import { useSiteConfig } from '../lib/siteConfig';
 import { WEEKDAYS, WEEKDAYS_SHORT, formatLongDate, formatMinutes, weekdayIndex } from '../lib/dates';
 import { activitiesOfDay, computeStreak, firstName, greeting, subjectsInPlan, totals } from '../lib/progress';
 import { useStudy } from '../lib/study';
 
 export default function Dashboard() {
-  const { user, profile } = useAuth();
+  const { user, profile, isAdmin } = useAuth();
+  const { settings } = useSiteConfig();
   const { data, loading: studyLoading, syncError, clearSyncError, toggleActivity } = useStudy();
+  const showStreak = settings.features.study_history || isAdmin;
   const plan = data.plan;
 
   if (!user) return null;
@@ -81,20 +84,22 @@ export default function Dashboard() {
 
       {/* Resumo dos estudos */}
       <section className="dash-stats" aria-label="Resumo dos estudos">
-        <div className="card stat-card stat-streak">
-          <div className="stat-icon stat-icon-streak">
-            <Flame size={20} />
+        {showStreak && (
+          <div className="card stat-card stat-streak">
+            <div className="stat-icon stat-icon-streak">
+              <Flame size={20} />
+            </div>
+            <div>
+              <span className="stat-label">Sequência</span>
+              <strong className="stat-value">
+                {streak} {streak === 1 ? 'dia' : 'dias'}
+              </strong>
+              <span className="stat-sub">
+                {streak > 0 ? 'Continue assim!' : 'Conclua uma atividade hoje'}
+              </span>
+            </div>
           </div>
-          <div>
-            <span className="stat-label">Sequência</span>
-            <strong className="stat-value">
-              {streak} {streak === 1 ? 'dia' : 'dias'}
-            </strong>
-            <span className="stat-sub">
-              {streak > 0 ? 'Continue assim!' : 'Conclua uma atividade hoje'}
-            </span>
-          </div>
-        </div>
+        )}
 
         <div className="card stat-card">
           <div className="stat-icon">

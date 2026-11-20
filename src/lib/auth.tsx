@@ -1,6 +1,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import type { Profile, ProfileUpdate } from '../types/database';
+import { logAuthEvent } from './adminApi';
 import { getAuthRedirectUrl, supabase } from './supabase';
 import { translateAuthError } from './authErrors';
 import { removeKey } from './storage';
@@ -47,10 +48,6 @@ function extensionForMime(mime: string): string {
   return 'jpg';
 }
 
-/**
- * Remove apenas as chaves legadas da autenticação local antiga (senhas/sessão simulada),
- * preservando dados de estudo ou preferências locais existentes.
- */
 function clearLegacyLocalAuth(): void {
   removeKey('users');
   removeKey('session');
@@ -65,7 +62,6 @@ async function fetchOrCreateProfile(authUser: User): Promise<Profile | null> {
 
   if (!error && data) return data;
 
-  // Caso o trigger ainda não tenha criado o perfil (fallback seguro respeitando RLS)
   if (!error && !data) {
     const rawName = typeof authUser.user_metadata?.full_name === 'string' ? normalizeName(authUser.user_metadata.full_name) : null;
     const { data: created, error: insertError } = await supabase
@@ -87,20 +83,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const [isRecovery, setIsRecovery] = useState(false);
 
-  // Evita condições de corrida ao atualizar o perfil quando o usuário muda rapidamente.
   const activeUserIdRef = useRef<string | null>(null);
 
-  const loadProfileForUser = useCallback(async (authUser: User | null): Promise<Profile | null> => {
-    if (!authUser) {
-      setProfile(null);
-      return null;
-    }
-    const fetched = await fetchOrCreateProfile(authUser);
-    if (activeUserIdRef.current === authUser.id) {
-      setProfile(fetched);
-    }
-    return fetched;
+  const forceLocalClear = useCallback(async () => {
+    await supabase.auth.signOut({ scope: 'local' }).catch(() => undefined);
+    activeUserIdRef.current = null;
+    setSession(null);
+    setUser(null);
+    setProfile(null);
+    setIsRecovery(false);
   }, []);
+
+  const loadProfileForUser = useCallback(
+    async (authUser: User | null): Promise<Profile | null> => {
+      if (!authUser) {
+        setProfile(null);
+        return null;
+      }
+      const fetched = await fetchOrCreateProfile(authUser);
+      if (activeUserIdRef.current !== authUser.id) return null;
+
+      if (fetched?.status === 'suspended') {
+        await forceLocalClear();
+        return null;
+      }
+
+      setProfile(fetched);
+      return fetched;
+    },
+    [forceLocalClear],
+  );
 
   useEffect(() => {
     clearLegacyLocalAuth();
@@ -115,14 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         if (!mounted) return;
 
-        const initialUser = initialSession?.user ?? null;
-        activeUserIdRef.current = initialUser?.id ?? null;
-        setSession(initialSession);
-        setUser(initialUser);
-
-        if (initialUser) {
-          await loadProfileForUser(initialUser);
+        if (initialSession?.user) {
+          // Valida que a sessão ainda existe e não foi revogada remotamente.
+          const { data: serverCheck, error: checkErr } = await supabase.auth.getUser();
+          if (!mounted) return;
+          if (checkErr || !serverCheck.user) {
+            await forceLocalClear();
+            return;
+          }
+          activeUserIdRef.current = serverCheck.user.id;
+          setSession(initialSession);
+          setUser(serverCheck.user);
+          await loadProfileForUser(serverCheck.user);
         } else {
+          activeUserIdRef.current = null;
+          setSession(null);
+          setUser(null);
           setProfile(null);
         }
       } finally {
@@ -155,7 +175,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Evita chamadas assíncronas bloqueantes diretamente no callback do Supabase Auth.
       if (nextUser.id !== previousUserId || event === 'SIGNED_IN' || event === 'USER_UPDATED') {
         window.setTimeout(() => {
           if (mounted && activeUserIdRef.current === nextUser.id) {
@@ -165,11 +184,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     });
 
+    // Detecta encerramento remoto de sessão ou suspensão ao retornar para a aba.
+    const onFocus = () => {
+      if (!activeUserIdRef.current) return;
+      void (async () => {
+        const { data, error } = await supabase.auth.getUser();
+        if (!mounted) return;
+        if (error || !data.user) {
+          await forceLocalClear();
+          return;
+        }
+        await loadProfileForUser(data.user);
+      })();
+    };
+    window.addEventListener('focus', onFocus);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      window.removeEventListener('focus', onFocus);
     };
-  }, [loadProfileForUser]);
+  }, [forceLocalClear, loadProfileForUser]);
 
   const refreshProfile = useCallback(async (): Promise<Profile | null> => {
     if (!user) {
@@ -179,75 +214,110 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return loadProfileForUser(user);
   }, [loadProfileForUser, user]);
 
-  const signIn = useCallback<AuthContextValue['signIn']>(async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: normalizeEmail(email),
-      password,
-    });
+  const signIn = useCallback<AuthContextValue['signIn']>(
+    async (email, password) => {
+      const cleanEmail = normalizeEmail(email);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: cleanEmail,
+        password,
+      });
 
-    if (error) {
-      return { ok: false, error: translateAuthError(error, 'Não foi possível entrar. Tente novamente.') };
-    }
+      if (error) {
+        const isBanned = (error.message ?? '').toLowerCase().includes('banned');
+        void logAuthEvent({
+          event_type: 'login_failed',
+          email: cleanEmail,
+          reason: isBanned ? 'account_suspended' : error.code ?? 'invalid_credentials',
+        });
+        if (isBanned) {
+          return { ok: false, error: 'Esta conta está temporariamente suspensa pela administração.' };
+        }
+        return { ok: false, error: translateAuthError(error, 'Não foi possível entrar. Tente novamente.') };
+      }
 
-    if (data.user) {
-      activeUserIdRef.current = data.user.id;
-      setSession(data.session);
-      setUser(data.user);
-      await loadProfileForUser(data.user);
-    }
+      if (data.user) {
+        activeUserIdRef.current = data.user.id;
+        setSession(data.session);
+        setUser(data.user);
+        const fetched = await loadProfileForUser(data.user);
+        if (!fetched && activeUserIdRef.current === null) {
+          return { ok: false, error: 'Esta conta está temporariamente suspensa pela administração.' };
+        }
+        void logAuthEvent({
+          event_type: 'login_success',
+          email: data.user.email ?? cleanEmail,
+          accessToken: data.session?.access_token,
+        });
+      }
 
-    return { ok: true };
-  }, [loadProfileForUser]);
+      return { ok: true };
+    },
+    [loadProfileForUser],
+  );
 
-  const signUp = useCallback<AuthContextValue['signUp']>(async (fullName, email, password) => {
-    const cleanName = normalizeName(fullName);
-    const cleanEmail = normalizeEmail(email);
+  const signUp = useCallback<AuthContextValue['signUp']>(
+    async (fullName, email, password) => {
+      const cleanName = normalizeName(fullName);
+      const cleanEmail = normalizeEmail(email);
 
-    const { data, error } = await supabase.auth.signUp({
-      email: cleanEmail,
-      password,
-      options: {
-        data: {
-          full_name: cleanName,
+      const { data, error } = await supabase.auth.signUp({
+        email: cleanEmail,
+        password,
+        options: {
+          data: {
+            full_name: cleanName,
+          },
+          emailRedirectTo: getAuthRedirectUrl('/entrar'),
         },
-        emailRedirectTo: getAuthRedirectUrl('/entrar'),
-      },
-    });
+      });
 
-    if (error) {
-      return { ok: false, error: translateAuthError(error, 'Não foi possível criar sua conta. Tente novamente.') };
-    }
+      if (error) {
+        return { ok: false, error: translateAuthError(error, 'Não foi possível criar sua conta. Tente novamente.') };
+      }
 
-    // Quando a proteção contra enumeração está ativa, o Supabase retorna identities vazio para e-mails já cadastrados.
-    if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-      return {
-        ok: false,
-        error: 'Já existe uma conta cadastrada com este e-mail. Tente entrar ou recuperar sua senha.',
-      };
-    }
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        return {
+          ok: false,
+          error: 'Já existe uma conta cadastrada com este e-mail. Tente entrar ou recuperar sua senha.',
+        };
+      }
 
-    if (data.session && data.user) {
-      activeUserIdRef.current = data.user.id;
-      setSession(data.session);
-      setUser(data.user);
-      await loadProfileForUser(data.user);
-      return { ok: true, needsEmailConfirmation: false };
-    }
+      void logAuthEvent({
+        event_type: 'signup',
+        email: cleanEmail,
+        accessToken: data.session?.access_token,
+      });
 
-    return { ok: true, needsEmailConfirmation: true };
-  }, [loadProfileForUser]);
+      if (data.session && data.user) {
+        activeUserIdRef.current = data.user.id;
+        setSession(data.session);
+        setUser(data.user);
+        await loadProfileForUser(data.user);
+        return { ok: true, needsEmailConfirmation: false };
+      }
+
+      return { ok: true, needsEmailConfirmation: true };
+    },
+    [loadProfileForUser],
+  );
 
   const signOut = useCallback(async () => {
+    const token = session?.access_token;
+    const email = user?.email;
+    if (token) {
+      await logAuthEvent({ event_type: 'logout', email, accessToken: token });
+    }
     await supabase.auth.signOut();
     activeUserIdRef.current = null;
     setSession(null);
     setUser(null);
     setProfile(null);
     setIsRecovery(false);
-  }, []);
+  }, [session?.access_token, user?.email]);
 
   const resetPassword = useCallback<AuthContextValue['resetPassword']>(async (email) => {
-    const { error } = await supabase.auth.resetPasswordForEmail(normalizeEmail(email), {
+    const cleanEmail = normalizeEmail(email);
+    const { error } = await supabase.auth.resetPasswordForEmail(cleanEmail, {
       redirectTo: getAuthRedirectUrl('/redefinir-senha'),
     });
 
@@ -255,19 +325,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: translateAuthError(error, 'Não foi possível enviar o e-mail de recuperação.') };
     }
 
+    void logAuthEvent({ event_type: 'password_reset_request', email: cleanEmail });
     return { ok: true };
   }, []);
 
-  const updatePassword = useCallback<AuthContextValue['updatePassword']>(async (newPassword) => {
-    const { error } = await supabase.auth.updateUser({ password: newPassword });
+  const updatePassword = useCallback<AuthContextValue['updatePassword']>(
+    async (newPassword) => {
+      const { error } = await supabase.auth.updateUser({ password: newPassword });
 
-    if (error) {
-      return { ok: false, error: translateAuthError(error, 'Não foi possível atualizar sua senha.') };
-    }
+      if (error) {
+        return { ok: false, error: translateAuthError(error, 'Não foi possível atualizar sua senha.') };
+      }
 
-    setIsRecovery(false);
-    return { ok: true };
-  }, []);
+      void logAuthEvent({
+        event_type: 'password_updated',
+        email: user?.email,
+        accessToken: session?.access_token,
+      });
+      setIsRecovery(false);
+      return { ok: true };
+    },
+    [session?.access_token, user?.email],
+  );
 
   const resendConfirmation = useCallback<AuthContextValue['resendConfirmation']>(async (email) => {
     const { error } = await supabase.auth.resend({
@@ -317,7 +396,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { ok: false, error: translateAuthError(error, 'Não foi possível salvar as alterações do perfil.') };
       }
 
-      // Mantém o full_name sincronizado nos metadados do Auth quando alterado.
       if ('full_name' in sanitized && sanitized.full_name) {
         void supabase.auth.updateUser({ data: { full_name: sanitized.full_name } });
       }
@@ -366,7 +444,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { ok: false, error: 'Você precisa estar conectado para remover sua foto.' };
     }
 
-    // Remove possíveis arquivos anteriores do usuário no bucket avatars (best-effort).
     const { data: files } = await supabase.storage.from('avatars').list(user.id);
     if (files && files.length > 0) {
       await supabase.storage.from('avatars').remove(files.map((f) => `${user.id}/${f.name}`));
@@ -376,8 +453,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [updateProfile, user]);
 
   const isAdmin = useMemo(
-    () => profile?.role === 'admin' || user?.app_metadata?.role === 'admin',
-    [profile?.role, user?.app_metadata?.role],
+    () => Boolean(profile?.role === 'admin' && profile?.status === 'active' && user?.app_metadata?.role === 'admin'),
+    [profile?.role, profile?.status, user?.app_metadata?.role],
   );
 
   const value = useMemo<AuthContextValue>(
@@ -428,7 +505,6 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
-/** Retorna o nome de exibição do estudante priorizando a tabela profiles. */
 export function getDisplayName(profile: Profile | null, user: User | null): string {
   const fromProfile = profile?.full_name?.trim();
   if (fromProfile) return fromProfile;
