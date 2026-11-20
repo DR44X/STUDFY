@@ -1,5 +1,5 @@
 import { Link } from 'react-router-dom';
-import { ArrowRight, CalendarDays, CheckCircle2, Clock, Flame, Sparkles } from 'lucide-react';
+import { AlertCircle, ArrowRight, CalendarDays, CheckCircle2, Clock, Flame, Sparkles, X } from 'lucide-react';
 import { ActivityItem } from '../components/ActivityItem';
 import { ProgressBar, ProgressRing } from '../components/Progress';
 import { getSubject } from '../data/subjects';
@@ -10,7 +10,7 @@ import { useStudy } from '../lib/study';
 
 export default function Dashboard() {
   const { user, profile } = useAuth();
-  const { data, loading: studyLoading, toggleActivity } = useStudy();
+  const { data, loading: studyLoading, syncError, clearSyncError, toggleActivity } = useStudy();
   const plan = data.plan;
 
   if (!user) return null;
@@ -68,6 +68,16 @@ export default function Dashboard() {
           <CalendarDays size={16} /> Ver cronograma
         </Link>
       </header>
+
+      {syncError && (
+        <div className="alert alert-error sched-sync-alert" role="alert">
+          <AlertCircle size={18} />
+          <span>{syncError}</span>
+          <button type="button" className="icon-btn sched-alert-close" aria-label="Fechar aviso" onClick={clearSyncError}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Resumo dos estudos */}
       <section className="dash-stats" aria-label="Resumo dos estudos">

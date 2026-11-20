@@ -8,11 +8,28 @@ interface SupabaseErrorLike {
   status?: number;
 }
 
-export function translateAuthError(error: SupabaseErrorLike | null | undefined, fallback = 'Ocorreu um erro inesperado. Tente novamente.'): string {
+export function translateAuthError(
+  error: SupabaseErrorLike | null | undefined,
+  fallback = 'Ocorreu um erro inesperado. Tente novamente.',
+): string {
   if (!error) return fallback;
 
   const code = (error.code ?? '').toLowerCase();
   const msg = (error.message ?? '').toLowerCase();
+
+  // Erro de chave de API / configuração do cliente (gateway HTTP 401)
+  if (
+    error.status === 401 ||
+    code === 'unauthorized_invalid_api_key' ||
+    msg.includes('invalid api key') ||
+    msg.includes('no api key found')
+  ) {
+    console.error('[Studfy Auth] Falha de autorização na API (401)', {
+      status: error.status ?? 401,
+      code: error.code ?? 'unauthorized_invalid_api_key',
+    });
+    return 'Não foi possível autenticar a conexão com o servidor (chave de API inválida). Verifique a configuração do ambiente.';
+  }
 
   // Códigos oficiais do Supabase Auth
   if (code === 'invalid_credentials' || msg.includes('invalid login credentials')) {
@@ -61,6 +78,12 @@ export function translateAuthError(error: SupabaseErrorLike | null | undefined, 
   if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network request failed')) {
     return 'Não foi possível conectar ao servidor. Verifique sua conexão com a internet e tente novamente.';
   }
+
+  // Log seguro apenas com metadados não sensíveis para diagnóstico de erros inesperados
+  console.error('[Studfy] Erro inesperado de autenticação/sincronização', {
+    status: error.status ?? null,
+    code: error.code ?? null,
+  });
 
   return fallback;
 }

@@ -1,6 +1,6 @@
 import { useState, type DragEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { SlidersHorizontal, X } from 'lucide-react';
+import { AlertCircle, ChevronLeft, ChevronRight, SlidersHorizontal, X } from 'lucide-react';
 import { ActivityItem } from '../components/ActivityItem';
 import { ProgressBar } from '../components/Progress';
 import { getSubject, isSubjectId, type SubjectId } from '../data/subjects';
@@ -17,7 +17,7 @@ import { activitiesOfDay, subjectsInPlan, totals } from '../lib/progress';
 import { useStudy } from '../lib/study';
 
 export default function Schedule() {
-  const { data, loading: studyLoading, toggleActivity, moveActivity } = useStudy();
+  const { data, loading: studyLoading, syncError, clearSyncError, toggleActivity, moveActivity } = useStudy();
   const [searchParams, setSearchParams] = useSearchParams();
   const plan = data.plan;
 
@@ -95,6 +95,12 @@ export default function Schedule() {
     setDragOverDay(null);
   };
 
+  const scrollToDay = (dayIdx: number) => {
+    setSelectedDay(dayIdx);
+    const el = document.getElementById(`sched-day-${dayIdx}`);
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  };
+
   const renderDayActivities = (day: number, variant: 'board' | 'list') => {
     const allInDay = activitiesOfDay(plan, day);
     const visible = activeSubject ? allInDay.filter((a) => a.subjectId === activeSubject) : allInDay;
@@ -102,7 +108,7 @@ export default function Schedule() {
     if (visible.length === 0) {
       return (
         <div className="day-empty">
-          {activeSubject ? 'Nenhuma atividade desta matéria.' : 'Dia livre'}
+          {activeSubject ? 'Nenhuma atividade desta matéria neste dia.' : 'Dia livre para descanso ou revisão leve.'}
         </div>
       );
     }
@@ -153,6 +159,16 @@ export default function Schedule() {
           <SlidersHorizontal size={16} /> Ajustar preferências
         </Link>
       </header>
+
+      {syncError && (
+        <div className="alert alert-error sched-sync-alert" role="alert">
+          <AlertCircle size={18} />
+          <span>{syncError}</span>
+          <button type="button" className="icon-btn sched-alert-close" aria-label="Fechar aviso" onClick={clearSyncError}>
+            <X size={16} />
+          </button>
+        </div>
+      )}
 
       {/* Progresso do planejamento */}
       <section className="card sched-progress" aria-label="Progresso do planejamento">
@@ -209,7 +225,33 @@ export default function Schedule() {
         )}
       </div>
 
-      {/* Visão desktop/tablet largo: quadro semanal */}
+      {/* Visão geral rápida dos 7 dias (Desktop / Tablet) */}
+      <nav className="sched-week-strip" aria-label="Resumo dos dias da semana">
+        {WEEKDAYS.map((name, dayIdx) => {
+          const dayDate = addDays(weekStart, dayIdx);
+          const dayActs = activitiesOfDay(plan, dayIdx);
+          const dayT = totals(dayActs);
+          const isToday = dayIdx === todayIdx;
+          const allDone = dayT.total > 0 && dayT.done === dayT.total;
+          return (
+            <button
+              key={name}
+              type="button"
+              className={`sched-strip-item${isToday ? ' is-today' : ''}${allDone ? ' is-complete' : ''}`}
+              onClick={() => scrollToDay(dayIdx)}
+            >
+              <span className="sched-strip-day">
+                {WEEKDAYS_SHORT[dayIdx]} <strong>{dayDate.getDate()}</strong>
+              </span>
+              <span className="sched-strip-status">
+                {dayT.total === 0 ? 'Livre' : `${dayT.done}/${dayT.total}`}
+              </span>
+            </button>
+          );
+        })}
+      </nav>
+
+      {/* Visão desktop/tablet: grade equilibrada com cards largos */}
       <section className="sched-board" aria-label="Atividades da semana">
         {WEEKDAYS.map((name, dayIdx) => {
           const dayDate = addDays(weekStart, dayIdx);
@@ -217,22 +259,33 @@ export default function Schedule() {
           const dayT = totals(dayActs);
           const isToday = dayIdx === todayIdx;
           const isDropTarget = dragOverDay === dayIdx;
+          const allDone = dayT.total > 0 && dayT.done === dayT.total;
+          const isSunday = dayIdx === 6;
 
           return (
             <div
               key={name}
-              className={`day-col${isToday ? ' is-today' : ''}${isDropTarget ? ' is-drop-target' : ''}`}
+              id={`sched-day-${dayIdx}`}
+              className={`day-col${isToday ? ' is-today' : ''}${isDropTarget ? ' is-drop-target' : ''}${isSunday ? ' is-sunday' : ''}`}
               onDragOver={handleDayDragOver(dayIdx)}
               onDragLeave={() => setDragOverDay((d) => (d === dayIdx ? null : d))}
               onDrop={handleDayDrop(dayIdx)}
             >
               <header className="day-col-head">
-                <div className="day-col-title">
-                  <strong>{WEEKDAYS_SHORT[dayIdx]}</strong>
-                  <span>{dayDate.getDate()}</span>
+                <div className="day-col-title-wrap">
+                  <div className="day-col-title">
+                    <strong>{name}</strong>
+                    <span>{formatDayMonth(dayDate)}</span>
+                    {isToday && <span className="tag tag-brand day-today-tag">Hoje</span>}
+                  </div>
+                  <p className="day-col-sub">
+                    {dayT.total === 0
+                      ? 'Dia livre'
+                      : `${formatMinutes(dayT.minutesTotal)} programados`}
+                  </p>
                 </div>
                 {dayT.total > 0 && (
-                  <span className="day-col-count">
+                  <span className={`day-col-count${allDone ? ' is-complete' : ''}`}>
                     {dayT.done}/{dayT.total}
                   </span>
                 )}
@@ -243,7 +296,7 @@ export default function Schedule() {
         })}
       </section>
 
-      {/* Visão celular / tablet estreito: seletor de dias + lista confortável */}
+      {/* Visão celular: seletor de dias + navegação rápida + lista confortável */}
       <section className="sched-mobile" aria-label="Atividades por dia">
         <div className="day-tabs" role="tablist" aria-label="Dias da semana">
           {WEEKDAYS_SHORT.map((label, dayIdx) => {
@@ -273,7 +326,7 @@ export default function Schedule() {
         </div>
 
         <div className="card sched-mobile-panel" role="tabpanel">
-          <div className="section-head">
+          <div className="section-head sched-mobile-head">
             <div>
               <h2>
                 {WEEKDAYS[selectedDay]}, {formatDayMonth(selectedDayDate)}
@@ -283,6 +336,26 @@ export default function Schedule() {
                   ? 'Dia livre no seu planejamento'
                   : `${selectedDayTotals.done} de ${selectedDayTotals.total} concluídas · ${formatMinutes(selectedDayTotals.minutesTotal)}`}
               </p>
+            </div>
+            <div className="sched-mobile-nav">
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Dia anterior"
+                disabled={selectedDay === 0}
+                onClick={() => setSelectedDay((d) => Math.max(0, d - 1))}
+              >
+                <ChevronLeft size={18} />
+              </button>
+              <button
+                type="button"
+                className="icon-btn"
+                aria-label="Próximo dia"
+                disabled={selectedDay === 6}
+                onClick={() => setSelectedDay((d) => Math.min(6, d + 1))}
+              >
+                <ChevronRight size={18} />
+              </button>
             </div>
           </div>
           {renderDayActivities(selectedDay, 'list')}

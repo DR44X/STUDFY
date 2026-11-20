@@ -1,5 +1,5 @@
 ﻿import { useEffect, useRef, useState, type DragEvent } from 'react';
-import { ArrowDown, ArrowUp, Check, Clock, GripVertical, MoreHorizontal, CalendarDays } from 'lucide-react';
+import { ArrowDown, ArrowUp, CalendarDays, Check, Clock, GripVertical, MoreHorizontal } from 'lucide-react';
 import { getSubject } from '../data/subjects';
 import { WEEKDAYS, formatMinutes } from '../lib/dates';
 import type { Activity } from '../lib/schedule';
@@ -7,7 +7,7 @@ import type { Activity } from '../lib/schedule';
 interface ActivityItemProps {
   activity: Activity;
   onToggle: (id: string) => void;
-  /** RÃ³tulo opcional exibido acima da matÃ©ria (ex.: dia da semana). */
+  /** Rótulo opcional exibido acima da matéria (ex.: dia da semana). */
   eyebrow?: string;
   variant?: 'list' | 'board';
   reorder?: {
@@ -36,7 +36,7 @@ export function ActivityItem({ activity, onToggle, eyebrow, variant = 'list', re
     >
       {reorder && (
         <span className="activity-grip" aria-hidden="true">
-          <GripVertical size={14} />
+          <GripVertical size={15} />
         </span>
       )}
       <button
@@ -44,26 +44,28 @@ export function ActivityItem({ activity, onToggle, eyebrow, variant = 'list', re
         className="check"
         role="checkbox"
         aria-checked={activity.done}
-        aria-label={`${activity.done ? 'Desmarcar' : 'Marcar como concluÃ­da'}: ${label}`}
+        aria-label={`${activity.done ? 'Desmarcar' : 'Marcar como concluída'}: ${label}`}
         onClick={() => onToggle(activity.id)}
       >
         <Check size={14} strokeWidth={3} />
       </button>
       <div className="activity-body">
-        {eyebrow && <span className="activity-eyebrow">{eyebrow}</span>}
-        <span className="activity-subject">
-          <span className="dot" style={{ background: 'var(--area)' }} />
-          {subject.name}
-        </span>
+        <div className="activity-top-row">
+          <span className="activity-subject-pill">
+            <span className="dot" style={{ background: 'var(--area)' }} />
+            {subject.name}
+          </span>
+          {eyebrow && <span className="activity-eyebrow">{eyebrow}</span>}
+        </div>
         <p className="activity-topic">{activity.topic}</p>
-        <span className="activity-meta">
-          <span>{activity.type}</span>
-          <span aria-hidden="true">Â·</span>
+        <div className="activity-meta">
+          <span className="activity-type-badge">{activity.type}</span>
           <span className="activity-time">
-            <Clock size={12} />
+            <Clock size={12} aria-hidden="true" />
             {formatMinutes(activity.minutes)}
           </span>
-        </span>
+          {activity.done && <span className="activity-done-pill">Concluída</span>}
+        </div>
       </div>
       {reorder && <MoveMenu activity={activity} label={label} {...reorder} />}
     </article>
