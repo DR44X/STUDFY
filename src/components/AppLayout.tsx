@@ -1,18 +1,20 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { CalendarDays, LayoutDashboard, LogOut, SlidersHorizontal } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, LogOut, SlidersHorizontal, UserRound } from 'lucide-react';
 import { Logo } from './Logo';
-import { useAuth } from '../lib/auth';
+import { getDisplayName, useAuth } from '../lib/auth';
 import { firstName } from '../lib/progress';
 import '../styles/app.css';
 
 const LINKS = [
   { to: '/painel', label: 'Painel', icon: LayoutDashboard },
   { to: '/cronograma', label: 'Cronograma', icon: CalendarDays },
+  { to: '/perfil', label: 'Perfil', icon: UserRound },
 ];
 
 export function AppLayout() {
-  const { user, logout } = useAuth();
-  const initial = (user?.name?.trim()[0] ?? 'E').toUpperCase();
+  const { user, profile, signOut } = useAuth();
+  const displayName = getDisplayName(profile, user);
+  const initial = (displayName.trim()[0] ?? 'E').toUpperCase();
 
   return (
     <div className="app-shell">
@@ -31,20 +33,26 @@ export function AppLayout() {
         </nav>
 
         <div className="app-sidebar-footer">
-          <Link to="/onboarding" className="app-nav-link app-nav-muted">
+          <Link to="/onboarding?editar=1" className="app-nav-link app-nav-muted">
             <SlidersHorizontal size={18} />
             <span>Ajustar plano</span>
           </Link>
 
           <div className="app-user">
-            <span className="app-avatar" aria-hidden="true">
-              {initial}
-            </span>
-            <div className="app-user-info">
-              <strong>{firstName(user?.name ?? '')}</strong>
-              <span>{user?.email}</span>
-            </div>
-            <button type="button" className="icon-btn" onClick={logout} aria-label="Sair da conta" title="Sair">
+            <Link to="/perfil" className="app-user-link" title="Abrir perfil">
+              <span className="app-avatar" aria-hidden="true">
+                {profile?.avatar_url ? (
+                  <img src={profile.avatar_url} alt="" />
+                ) : (
+                  initial
+                )}
+              </span>
+              <div className="app-user-info">
+                <strong>{firstName(displayName)}</strong>
+                <span>{profile?.username ? `@${profile.username}` : user?.email}</span>
+              </div>
+            </Link>
+            <button type="button" className="icon-btn" onClick={() => void signOut()} aria-label="Sair da conta" title="Sair">
               <LogOut size={17} />
             </button>
           </div>
@@ -54,10 +62,10 @@ export function AppLayout() {
       <header className="app-mobile-header">
         <Logo to="/painel" size="sm" />
         <div className="app-mobile-header-actions">
-          <Link to="/onboarding" className="icon-btn" aria-label="Ajustar plano" title="Ajustar plano">
+          <Link to="/onboarding?editar=1" className="icon-btn" aria-label="Ajustar plano" title="Ajustar plano">
             <SlidersHorizontal size={19} />
           </Link>
-          <button type="button" className="icon-btn" onClick={logout} aria-label="Sair da conta" title="Sair">
+          <button type="button" className="icon-btn" onClick={() => void signOut()} aria-label="Sair da conta" title="Sair">
             <LogOut size={19} />
           </button>
         </div>

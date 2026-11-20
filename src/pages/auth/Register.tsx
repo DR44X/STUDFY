@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { AlertCircle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Mail } from 'lucide-react';
 import { AuthLayout } from '../../components/AuthLayout';
 import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
@@ -17,25 +17,94 @@ const VALIDATORS = {
 };
 
 export default function Register() {
-  const { register } = useAuth();
+  const { signUp, resendConfirmation } = useAuth();
   const navigate = useNavigate();
   const { values, bind, validate } = useForm({ name: '', email: '', password: '', confirm: '' }, VALIDATORS);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [confirmationEmail, setConfirmationEmail] = useState<string | null>(null);
+  const [resending, setResending] = useState(false);
+  const [resendMessage, setResendMessage] = useState('');
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     if (!validate()) return;
+
     setLoading(true);
-    const result = await register(values.name, values.email, values.password);
+    const result = await signUp(values.name, values.email, values.password);
     setLoading(false);
+
     if (!result.ok) {
       setError(result.error);
       return;
     }
+
+    if (result.needsEmailConfirmation) {
+      setConfirmationEmail(values.email.trim().toLowerCase());
+      return;
+    }
+
     navigate('/onboarding', { replace: true });
   };
+
+  const handleResend = async () => {
+    if (!confirmationEmail || resending) return;
+    setResending(true);
+    setError('');
+    setResendMessage('');
+    const result = await resendConfirmation(confirmationEmail);
+    setResending(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
+    setResendMessage('Reenviamos o e-mail de confirmação. Confira sua caixa de entrada e o spam.');
+  };
+
+  if (confirmationEmail) {
+    return (
+      <AuthLayout
+        title="Confirme seu e-mail"
+        subtitle={
+          <>
+            Enviamos um link de confirmação para <strong>{confirmationEmail}</strong>.
+          </>
+        }
+        footer={
+          <>
+            Já confirmou? <Link to="/entrar" state={{ email: confirmationEmail }}>Ir para o login</Link>
+          </>
+        }
+      >
+        <div className="auth-form">
+          <div className="alert alert-info" role="status">
+            <Mail size={18} />
+            <span>Abra sua caixa de entrada e clique no link enviado para ativar sua conta no Studfy.</span>
+          </div>
+          {resendMessage && (
+            <div className="alert alert-success" role="status">
+              <CheckCircle2 size={18} /> <span>{resendMessage}</span>
+            </div>
+          )}
+          {error && (
+            <div className="alert alert-error" role="alert">
+              <AlertCircle size={18} /> <span>{error}</span>
+            </div>
+          )}
+          <Button type="button" variant="secondary" size="lg" block loading={resending} onClick={handleResend}>
+            Reenviar e-mail de confirmação
+          </Button>
+          <Link to="/entrar" state={{ email: confirmationEmail }} className="btn btn-primary btn-lg btn-block">
+            Ir para o login
+          </Link>
+        </div>
+      </AuthLayout>
+    );
+  }
 
   const passwordField = bind('password');
 
@@ -54,11 +123,16 @@ export default function Register() {
           <div className="alert alert-error" role="alert">
             <AlertCircle size={18} />
             <span>
-              {error} {error.includes('entrar') && <Link to="/entrar" state={{ email: values.email }}>Ir para o login</Link>}
+              {error}{' '}
+              {error.includes('entrar') && (
+                <Link to="/entrar" state={{ email: values.email }}>
+                  Ir para o login
+                </Link>
+              )}
             </span>
           </div>
         )}
-        <Field label="Nome" autoComplete="name" placeholder="Como podemos te chamar?" {...bind('name')} />
+        <Field label="Nome completo" autoComplete="name" placeholder="Como podemos te chamar?" {...bind('name')} />
         <Field label="E-mail" type="email" autoComplete="email" placeholder="nome@exemplo.com" inputMode="email" {...bind('email')} />
         <Field
           label="Senha"
@@ -69,7 +143,7 @@ export default function Register() {
           {...passwordField}
         />
         <Field label="Confirmar senha" type="password" autoComplete="new-password" placeholder="Repita a senha" {...bind('confirm')} />
-        <Button type="submit" size="lg" block loading={loading}>
+        <Button type="submit" size="lg" block loading={loading} disabled={loading}>
           Criar conta
         </Button>
       </form>

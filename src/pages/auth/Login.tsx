@@ -6,34 +6,47 @@ import { Button } from '../../components/Button';
 import { Field } from '../../components/Field';
 import { useAuth } from '../../lib/auth';
 import { useForm } from '../../lib/useForm';
-import { validateEmail } from '../../lib/validation';
+import { isSafeRedirectPath, validateEmail } from '../../lib/validation';
 
 const VALIDATORS = {
   email: validateEmail,
   password: (v: string) => (v ? undefined : 'Informe sua senha.'),
 };
 
+interface LoginLocationState {
+  reset?: boolean;
+  email?: string;
+  from?: string;
+}
+
 export default function Login() {
-  const { login } = useAuth();
+  const { signIn } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const resetDone = (location.state as { reset?: boolean } | null)?.reset;
-  const { values, bind, validate } = useForm({ email: (location.state as { email?: string } | null)?.email ?? '', password: '' }, VALIDATORS);
+  const state = (location.state as LoginLocationState | null) ?? null;
+  const resetDone = Boolean(state?.reset);
+  const redirectTo = isSafeRedirectPath(state?.from) ? state.from : '/painel';
+
+  const { values, bind, validate } = useForm({ email: state?.email ?? '', password: '' }, VALIDATORS);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
   const onSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (loading) return;
     setError('');
     if (!validate()) return;
+
     setLoading(true);
-    const result = await login(values.email, values.password);
+    const result = await signIn(values.email, values.password);
     setLoading(false);
+
     if (!result.ok) {
       setError(result.error);
       return;
     }
-    navigate('/painel', { replace: true });
+
+    navigate(redirectTo, { replace: true });
   };
 
   return (
@@ -49,12 +62,12 @@ export default function Login() {
       <form className="auth-form" onSubmit={onSubmit} noValidate>
         {resetDone && !error && (
           <div className="alert alert-success" role="status">
-            <CheckCircle2 size={18} /> Senha redefinida. Entre com a nova senha.
+            <CheckCircle2 size={18} /> Senha redefinida com sucesso. Entre com a nova senha.
           </div>
         )}
         {error && (
           <div className="alert alert-error" role="alert">
-            <AlertCircle size={18} /> {error}
+            <AlertCircle size={18} /> <span>{error}</span>
           </div>
         )}
         <Field label="E-mail" type="email" autoComplete="email" placeholder="nome@exemplo.com" inputMode="email" {...bind('email')} />
@@ -70,7 +83,7 @@ export default function Login() {
           }
           {...bind('password')}
         />
-        <Button type="submit" size="lg" block loading={loading}>
+        <Button type="submit" size="lg" block loading={loading} disabled={loading}>
           Entrar
         </Button>
       </form>

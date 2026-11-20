@@ -17,7 +17,7 @@ import { activitiesOfDay, subjectsInPlan, totals } from '../lib/progress';
 import { useStudy } from '../lib/study';
 
 export default function Schedule() {
-  const { data, toggleActivity, moveActivity } = useStudy();
+  const { data, loading: studyLoading, toggleActivity, moveActivity } = useStudy();
   const [searchParams, setSearchParams] = useSearchParams();
   const plan = data.plan;
 
@@ -29,7 +29,28 @@ export default function Schedule() {
   const [dragId, setDragId] = useState<string | null>(null);
   const [dragOverDay, setDragOverDay] = useState<number | null>(null);
 
-  if (!plan) return null;
+  if (studyLoading && !plan) {
+    return (
+      <div className="page-loading page-loading-inline" role="status" aria-live="polite" aria-label="Carregando seu cronograma">
+        <span className="spinner spinner-brand" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <div className="card dash-section">
+        <div className="empty-box">
+          <SlidersHorizontal size={22} />
+          <h3>Cronograma ainda não configurado</h3>
+          <p>Finalize as perguntas rápidas do seu plano para gerar o cronograma da semana.</p>
+          <Link to="/onboarding?editar=1" className="btn btn-primary btn-sm">
+            Configurar plano
+          </Link>
+        </div>
+      </div>
+    );
+  }
 
   const rawSubject = searchParams.get('materia');
   const activeSubject: SubjectId | null = isSubjectId(rawSubject) ? rawSubject : null;
@@ -128,7 +149,7 @@ export default function Schedule() {
           </p>
           <h1>Cronograma semanal</h1>
         </div>
-        <Link to="/onboarding" className="btn btn-secondary btn-sm">
+        <Link to="/onboarding?editar=1" className="btn btn-secondary btn-sm">
           <SlidersHorizontal size={16} /> Ajustar preferências
         </Link>
       </header>

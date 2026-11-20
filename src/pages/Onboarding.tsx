@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowLeft, ArrowRight, Check, Clock, CalendarDays, Target, Layers, LogOut } from 'lucide-react';
+import { AlertCircle, ArrowLeft, ArrowRight, Check, Clock, CalendarDays, Target, Layers, LogOut } from 'lucide-react';
 import { Logo } from '../components/Logo';
 import { Button } from '../components/Button';
 import { ProgressBar } from '../components/Progress';
@@ -16,7 +16,7 @@ import {
   type Option,
 } from '../data/onboarding';
 import { SUBJECTS, getSubject, type SubjectId } from '../data/subjects';
-import { useAuth } from '../lib/auth';
+import { getDisplayName, useAuth } from '../lib/auth';
 import { useStudy } from '../lib/study';
 import { blocksFor, studyDaysFor } from '../lib/schedule';
 import { WEEKDAYS_SHORT, formatMinutes } from '../lib/dates';
@@ -34,15 +34,28 @@ interface Draft {
 const TOTAL_STEPS = 5;
 
 export default function Onboarding() {
-  const { user, logout } = useAuth();
+  const { user, profile, signOut } = useAuth();
   const { data, saveOnboarding } = useStudy();
   const navigate = useNavigate();
-  const editing = Boolean(data.onboarding);
+  const editing = Boolean(profile?.onboarding_completed || data.onboarding);
+  const displayName = getDisplayName(profile, user);
+
   const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<Draft>(() => data.onboarding ?? { difficulties: [] });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Preenche o rascunho se as preferências remotas carregarem após a montagem.
+  useEffect(() => {
+    if (!data.onboarding) return;
+    setDraft((prev) => (prev.goal ? prev : data.onboarding!));
+  }, [data.onboarding]);
 
   const next = () => setStep((s) => Math.min(s + 1, TOTAL_STEPS));
-  const back = () => setStep((s) => Math.max(s - 1, 0));
+  const back = () => {
+    setError('');
+    setStep((s) => Math.max(s - 1, 0));
+  };
 
   /** Perguntas de escolha única avançam sozinhas após a seleção. */
   function choose<K extends keyof Draft>(key: K, value: Draft[K]) {
@@ -57,15 +70,24 @@ export default function Onboarding() {
       return { ...d, difficulties: [...d.difficulties, id] };
     });
 
-  const finish = () => {
-    if (!draft.goal || !draft.dailyMinutes || !draft.level || !draft.daysPerWeek) return;
-    saveOnboarding({
+  const finish = async () => {
+    if (saving || !draft.goal || !draft.dailyMinutes || !draft.level || !draft.daysPerWeek) return;
+    setError('');
+    setSaving(true);
+    const result = await saveOnboarding({
       goal: draft.goal,
       dailyMinutes: draft.dailyMinutes,
       difficulties: draft.difficulties,
       level: draft.level,
       daysPerWeek: draft.daysPerWeek,
     });
+    setSaving(false);
+
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+
     navigate('/cronograma', { replace: true });
   };
 
@@ -80,7 +102,7 @@ export default function Onboarding() {
             Cancelar
           </Button>
         ) : (
-          <Button variant="ghost" size="sm" onClick={logout}>
+          <Button variant="ghost" size="sm" onClick={() => void signOut()}>
             <LogOut size={16} /> Sair
           </Button>
         )}
@@ -109,7 +131,7 @@ export default function Onboarding() {
 
           {step === 0 && (
             <Question
-              title={editing ? 'Qual é seu objetivo?' : `Olá, ${firstName(user?.name ?? '')}! Qual é seu objetivo?`}
+              title={editing ? 'Qual é seu objetivo?' : `Olá, ${firstName(displayName)}! Qual é seu objetivo?`}
               subtitle="Isso ajuda a definir onde colocar mais energia."
             >
               <Choices options={GOAL_OPTIONS} value={draft.goal} onChoose={(v) => choose('goal', v)} />
@@ -186,7 +208,16 @@ export default function Onboarding() {
             </Question>
           )}
 
-          {isSummary && <Summary draft={draft} editing={editing} onBack={back} onFinish={finish} />}
+          {isSummary && (
+            <Summary
+              draft={draft}
+              editing={editing}
+              saving={saving}
+              error={error}
+              onBack={back}
+              onFinish={finish}
+            />
+          )}
         </div>
       </main>
     </div>
@@ -230,7 +261,21 @@ function Choices<T>({ options, value, onChoose }: { options: Option<T>[]; value:
   );
 }
 
-function Summary({ draft, editing, onBack, onFinish }: { draft: Draft; editing: boolean; onBack: () => void; onFinish: () => void }) {
+function Summary({
+  draft,
+  editing,
+  saving,
+  error,
+  onBack,
+  onFinish,
+}: {
+  draft: Draft;
+  editing: boolean;
+  saving: boolean;
+  error: string;
+  onBack: () => void;
+  onFinish: () => void;
+}) {
   const days = studyDaysFor(draft.daysPerWeek ?? 5);
   const blocks = blocksFor(draft.dailyMinutes ?? 60);
   const weekly = days.length * blocks.count * blocks.minutes;
@@ -246,6 +291,12 @@ function Summary({ draft, editing, onBack, onFinish }: { draft: Draft; editing: 
           ? 'Um novo cronograma será montado para esta semana. Sua sequência de estudos será mantida.'
           : 'Montamos um cronograma semanal com base nas suas respostas.'}
       </p>
+
+      {error && (
+        <div className="alert alert-error" role="alert" style={{ width: '100%', textAlign: 'left' }}>
+          <AlertCircle size={18} /> <span>{error}</span>
+        </div>
+      )}
 
       <dl className="ob-summary-list">
         <div>
@@ -277,10 +328,10 @@ function Summary({ draft, editing, onBack, onFinish }: { draft: Draft; editing: 
       </dl>
 
       <div className="ob-actions ob-actions-final">
-        <Button variant="ghost" onClick={onBack}>
+        <Button variant="ghost" onClick={onBack} disabled={saving}>
           <ArrowLeft size={16} /> Revisar
         </Button>
-        <Button size="lg" onClick={onFinish}>
+        <Button size="lg" onClick={onFinish} loading={saving} disabled={saving}>
           {editing ? 'Atualizar cronograma' : 'Ver meu cronograma'} <ArrowRight size={18} />
         </Button>
       </div>

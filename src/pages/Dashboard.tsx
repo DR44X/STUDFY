@@ -3,24 +3,48 @@ import { ArrowRight, CalendarDays, CheckCircle2, Clock, Flame, Sparkles } from '
 import { ActivityItem } from '../components/ActivityItem';
 import { ProgressBar, ProgressRing } from '../components/Progress';
 import { getSubject } from '../data/subjects';
-import { useAuth } from '../lib/auth';
+import { getDisplayName, useAuth } from '../lib/auth';
 import { WEEKDAYS, WEEKDAYS_SHORT, formatLongDate, formatMinutes, weekdayIndex } from '../lib/dates';
 import { activitiesOfDay, computeStreak, firstName, greeting, subjectsInPlan, totals } from '../lib/progress';
 import { useStudy } from '../lib/study';
 
 export default function Dashboard() {
-  const { user } = useAuth();
-  const { data, toggleActivity } = useStudy();
+  const { user, profile } = useAuth();
+  const { data, loading: studyLoading, toggleActivity } = useStudy();
   const plan = data.plan;
 
-  if (!plan || !user) return null;
+  if (!user) return null;
 
+  if (studyLoading && !plan) {
+    return (
+      <div className="page-loading page-loading-inline" role="status" aria-live="polite" aria-label="Carregando seu plano de estudos">
+        <span className="spinner spinner-brand" aria-hidden="true" />
+      </div>
+    );
+  }
+
+  if (!plan) {
+    return (
+      <div className="card dash-section">
+        <div className="empty-box">
+          <Sparkles size={22} />
+          <h3>Configure seu plano de estudos</h3>
+          <p>Responda rapidamente às perguntas iniciais para montarmos seu cronograma semanal personalizado.</p>
+          <Link to="/onboarding?editar=1" className="btn btn-primary btn-sm">
+            Configurar plano
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  const displayName = getDisplayName(profile, user);
   const today = new Date();
   const todayIdx = weekdayIndex(today);
   const todayActivities = activitiesOfDay(plan, todayIdx);
   const todayTotals = totals(todayActivities);
   const weekTotals = totals(plan.activities);
-  const streak = computeStreak(data.studyLog, plan.studyDays, user.createdAt);
+  const streak = computeStreak(data.studyLog, plan.studyDays, user.created_at);
   const subjects = subjectsInPlan(plan);
 
   const upcoming = plan.activities
@@ -37,7 +61,7 @@ export default function Dashboard() {
         <div>
           <p className="page-date">{formatLongDate(today)}</p>
           <h1>
-            {greeting(today)}, {firstName(user.name)}
+            {greeting(today)}, {firstName(displayName)}
           </h1>
         </div>
         <Link to="/cronograma" className="btn btn-secondary btn-sm">

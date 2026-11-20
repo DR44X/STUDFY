@@ -1,6 +1,7 @@
 /** Regras de validação compartilhadas pelos formulários. */
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const USERNAME_RE = /^[a-z0-9._]+$/;
 
 export function validateName(name: string): string | undefined {
   const value = name.trim();
@@ -28,6 +29,23 @@ export function validateConfirm(password: string, confirm: string): string | und
   if (!confirm) return 'Confirme sua senha.';
   if (password !== confirm) return 'As senhas não coincidem.';
   return undefined;
+}
+
+export function validateUsername(username: string): string | undefined {
+  const value = username.trim().toLowerCase();
+  if (!value) return undefined; // Opcional no perfil
+  if (value.length < 3 || value.length > 30) {
+    return 'O nome de usuário deve ter entre 3 e 30 caracteres.';
+  }
+  if (!USERNAME_RE.test(value)) {
+    return 'Use apenas letras minúsculas, números, ponto (.) ou underline (_).';
+  }
+  return undefined;
+}
+
+/** Valida que um destino de redirecionamento é uma rota interna segura (evita open redirect). */
+export function isSafeRedirectPath(path: unknown): path is string {
+  return typeof path === 'string' && path.startsWith('/') && !path.startsWith('//') && !path.includes('://');
 }
 
 export interface PasswordStrength {
