@@ -58,3 +58,23 @@ export function OnboardingRoute({ children }: { children: ReactNode }) {
 
   return <>{children}</>;
 }
+
+/** Restringe rotas administrativas apenas a usuários com papel de administrador. */
+export function AdminRoute({ children }: { children: ReactNode }) {
+  const { user, profile, isAdmin, loading } = useAuth();
+  const location = useLocation();
+
+  if (loading) return <PageLoader />;
+  if (!user) {
+    const from = `${location.pathname}${location.search}`;
+    return <Navigate to="/entrar" replace state={{ from }} />;
+  }
+  if (profile && !profile.onboarding_completed) {
+    return <Navigate to="/onboarding" replace />;
+  }
+  if (!isAdmin) {
+    return <Navigate to="/painel" replace />;
+  }
+
+  return <>{children}</>;
+}

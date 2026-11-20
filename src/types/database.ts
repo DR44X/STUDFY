@@ -19,6 +19,7 @@ export type Database = {
           full_name: string | null;
           id: string;
           onboarding_completed: boolean;
+          role: 'student' | 'admin';
           updated_at: string;
           username: string | null;
         };
@@ -28,6 +29,7 @@ export type Database = {
           full_name?: string | null;
           id: string;
           onboarding_completed?: boolean;
+          role?: 'student' | 'admin';
           updated_at?: string;
           username?: string | null;
         };
@@ -37,6 +39,7 @@ export type Database = {
           full_name?: string | null;
           id?: string;
           onboarding_completed?: boolean;
+          role?: 'student' | 'admin';
           updated_at?: string;
           username?: string | null;
         };

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { AppLayout } from './components/AppLayout';
-import { GuestRoute, OnboardingRoute, PageLoader, ProtectedRoute } from './components/RouteGuards';
+import { AdminRoute, GuestRoute, OnboardingRoute, PageLoader, ProtectedRoute } from './components/RouteGuards';
 import { Landing } from './pages/Landing';
 
 const Login = lazy(() => import('./pages/auth/Login'));
@@ -12,6 +12,7 @@ const Onboarding = lazy(() => import('./pages/Onboarding'));
 const Dashboard = lazy(() => import('./pages/Dashboard'));
 const Schedule = lazy(() => import('./pages/Schedule'));
 const Profile = lazy(() => import('./pages/Profile'));
+const Admin = lazy(() => import('./pages/Admin'));
 
 function ScrollToTop() {
   const { pathname } = useLocation();
@@ -71,6 +72,14 @@ export function App() {
             <Route path="/painel" element={<Dashboard />} />
             <Route path="/cronograma" element={<Schedule />} />
             <Route path="/perfil" element={<Profile />} />
+            <Route
+              path="/admin"
+              element={
+                <AdminRoute>
+                  <Admin />
+                </AdminRoute>
+              }
+            />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

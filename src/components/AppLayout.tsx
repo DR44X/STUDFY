@@ -1,5 +1,5 @@
 import { NavLink, Outlet, Link } from 'react-router-dom';
-import { CalendarDays, LayoutDashboard, LogOut, SlidersHorizontal, UserRound } from 'lucide-react';
+import { CalendarDays, LayoutDashboard, LogOut, ShieldCheck, SlidersHorizontal, UserRound } from 'lucide-react';
 import { Logo } from './Logo';
 import { getDisplayName, useAuth } from '../lib/auth';
 import { firstName } from '../lib/progress';
@@ -12,9 +12,12 @@ const LINKS = [
 ];
 
 export function AppLayout() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, isAdmin, signOut } = useAuth();
   const displayName = getDisplayName(profile, user);
   const initial = (displayName.trim()[0] ?? 'E').toUpperCase();
+  const navLinks = isAdmin
+    ? [...LINKS, { to: '/admin', label: 'Admin', icon: ShieldCheck }]
+    : LINKS;
 
   return (
     <div className="app-shell">
@@ -24,7 +27,7 @@ export function AppLayout() {
         </div>
 
         <nav className="app-nav">
-          {LINKS.map(({ to, label, icon: Icon }) => (
+          {navLinks.map(({ to, label, icon: Icon }) => (
             <NavLink key={to} to={to} className={({ isActive }) => `app-nav-link${isActive ? ' is-active' : ''}`}>
               <Icon size={19} />
               <span>{label}</span>
@@ -48,7 +51,10 @@ export function AppLayout() {
                 )}
               </span>
               <div className="app-user-info">
-                <strong>{firstName(displayName)}</strong>
+                <strong>
+                  {firstName(displayName)}
+                  {isAdmin && <span className="tag tag-brand app-role-tag">Admin</span>}
+                </strong>
                 <span>{profile?.username ? `@${profile.username}` : user?.email}</span>
               </div>
             </Link>
@@ -78,7 +84,7 @@ export function AppLayout() {
       </main>
 
       <nav className="app-bottom-nav" aria-label="Navegação inferior">
-        {LINKS.map(({ to, label, icon: Icon }) => (
+        {navLinks.map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} className={({ isActive }) => `app-bottom-link${isActive ? ' is-active' : ''}`}>
             <Icon size={20} />
             <span>{label}</span>

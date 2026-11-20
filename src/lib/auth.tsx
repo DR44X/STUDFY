@@ -13,6 +13,7 @@ export interface AuthContextValue {
   user: User | null;
   session: Session | null;
   profile: Profile | null;
+  isAdmin: boolean;
   loading: boolean;
   isRecovery: boolean;
   signIn: (email: string, password: string) => Promise<AuthActionResult>;
@@ -374,11 +375,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return updateProfile({ avatar_url: null });
   }, [updateProfile, user]);
 
+  const isAdmin = useMemo(
+    () => profile?.role === 'admin' || user?.app_metadata?.role === 'admin',
+    [profile?.role, user?.app_metadata?.role],
+  );
+
   const value = useMemo<AuthContextValue>(
     () => ({
       user,
       session,
       profile,
+      isAdmin,
       loading,
       isRecovery,
       signIn,
@@ -396,6 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       user,
       session,
       profile,
+      isAdmin,
       loading,
       isRecovery,
       signIn,

@@ -18,7 +18,7 @@ const PASSWORD_VALIDATORS = {
 };
 
 export default function Profile() {
-  const { user, profile, updateProfile, uploadAvatar, removeAvatar, updatePassword } = useAuth();
+  const { user, profile, isAdmin, updateProfile, uploadAvatar, removeAvatar, updatePassword } = useAuth();
   const displayName = getDisplayName(profile, user);
   const initial = (displayName.trim()[0] ?? 'E').toUpperCase();
 
@@ -130,6 +130,7 @@ export default function Profile() {
           <p className="page-date">Conta e identidade</p>
           <h1>Meu perfil</h1>
         </div>
+        {isAdmin && <span className="tag tag-brand">Administrador</span>}
       </header>
 
       <div className="profile-grid">
