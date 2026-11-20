@@ -218,7 +218,8 @@ async function persistLogsToSupabase(
 
 export function StudyProvider({ children }: { children: ReactNode }) {
   const { user, updateProfile } = useAuth();
-  const storageKey = user ? `data:${user.id}` : null;
+  const userId = user?.id ?? null;
+  const storageKey = userId ? `data:${userId}` : null;
 
   const [state, setState] = useState<{ key: string | null; data: StudyData }>(() => ({
     key: storageKey,
@@ -228,10 +229,14 @@ export function StudyProvider({ children }: { children: ReactNode }) {
   const [syncError, setSyncError] = useState('');
   const latestDataRef = useRef<StudyData>(state.data);
   latestDataRef.current = state.data;
+  const syncQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const activeUserIdRef = useRef<string | null>(userId);
+  activeUserIdRef.current = userId;
 
   // Recarrega o cache local imediatamente quando o usuário da sessão muda.
   useEffect(() => {
     setSyncError('');
+    syncQueueRef.current = Promise.resolve();
     if (!storageKey) {
       setState({ key: null, data: EMPTY });
       return;
@@ -242,26 +247,26 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   // Carrega e sincroniza preferências, progresso, plano semanal e histórico a partir do Supabase.
   useEffect(() => {
-    if (!user) {
+    if (!userId) {
       setSyncingUserId(null);
       return;
     }
 
-    const currentUser = user;
+    const currentUserId = userId;
     let cancelled = false;
-    const key = `data:${currentUser.id}`;
-    setSyncingUserId(currentUser.id);
+    const key = `data:${currentUserId}`;
+    setSyncingUserId(currentUserId);
 
     async function loadFromSupabase() {
       try {
         const [prefsRes, progressRes, logsRes, latestPlanRes] = await Promise.all([
-          supabase.from('study_preferences').select('*').eq('user_id', currentUser.id).maybeSingle(),
-          supabase.from('study_progress').select('*').eq('user_id', currentUser.id).maybeSingle(),
-          supabase.from('study_logs').select('*').eq('user_id', currentUser.id),
+          supabase.from('study_preferences').select('*').eq('user_id', currentUserId).maybeSingle(),
+          supabase.from('study_progress').select('*').eq('user_id', currentUserId).maybeSingle(),
+          supabase.from('study_logs').select('*').eq('user_id', currentUserId),
           supabase
             .from('study_plans')
             .select('*')
-            .eq('user_id', currentUser.id)
+            .eq('user_id', currentUserId)
             .order('week_start', { ascending: false })
             .limit(1)
             .maybeSingle(),
@@ -289,13 +294,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         const localCache = readJSON<Partial<StudyData>>(key, {});
         const remoteTopicCursor = progressRes.data ? parseSubjectMap(progressRes.data.topic_cursor) : null;
         const remoteCoverage = progressRes.data ? parseSubjectMap(progressRes.data.coverage) : null;
-        const hasRemoteLogs = Boolean(logsRes.data && logsRes.data.length > 0);
         const mappedRemoteLogs = mapLogsRows(logsRes.data ?? []);
+        const hasRemoteStudyState = Boolean(
+          latestPlanRes.data || progressRes.data || (logsRes.data && logsRes.data.length > 0),
+        );
 
         let topicCursor = remoteTopicCursor ?? parseSubjectMap(localCache.topicCursor);
         let coverage = remoteCoverage ?? parseSubjectMap(localCache.coverage);
-        const studyLog = hasRemoteLogs ? mappedRemoteLogs.studyLog : (localCache.studyLog ?? {});
-        const studyMinutesLog = hasRemoteLogs ? mappedRemoteLogs.studyMinutesLog : (localCache.studyMinutesLog ?? {});
+        const studyLog = hasRemoteStudyState ? mappedRemoteLogs.studyLog : (localCache.studyLog ?? {});
+        const studyMinutesLog = hasRemoteStudyState ? mappedRemoteLogs.studyMinutesLog : (localCache.studyMinutesLog ?? {});
 
         let planId: string | undefined;
         let plan: WeekPlan | undefined;
@@ -306,7 +313,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             .from('study_activities')
             .select('*')
             .eq('plan_id', latestPlanRes.data.id)
-            .eq('user_id', currentUser.id)
+            .eq('user_id', currentUserId)
             .order('position', { ascending: true });
 
           if (cancelled) return;
@@ -335,8 +342,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             coverage = rolled.coverage;
             plan = rolled.plan;
             if (plan) {
-              planId = await persistPlanToSupabase(currentUser.id, plan);
-              await persistProgressToSupabase(currentUser.id, topicCursor, coverage);
+              planId = await persistPlanToSupabase(currentUserId, plan);
+              await persistProgressToSupabase(currentUserId, topicCursor, coverage);
             }
           }
         } else if (localCache.plan && localCache.plan.activities.length > 0) {
@@ -362,9 +369,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           }
 
           if (plan) {
-            planId = await persistPlanToSupabase(currentUser.id, plan);
-            await persistProgressToSupabase(currentUser.id, topicCursor, coverage);
-            await persistLogsToSupabase(currentUser.id, studyLog, studyMinutesLog);
+            planId = await persistPlanToSupabase(currentUserId, plan);
+            await persistProgressToSupabase(currentUserId, topicCursor, coverage);
+            await persistLogsToSupabase(currentUserId, studyLog, studyMinutesLog);
           }
         } else if (onboarding) {
           // Usuário concluiu onboarding antes da Etapa 2, mas ainda não tinha plano persistido no banco.
@@ -380,8 +387,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
           coverage = generated.coverage;
           plan = generated.plan;
           if (plan) {
-            planId = await persistPlanToSupabase(currentUser.id, plan);
-            await persistProgressToSupabase(currentUser.id, topicCursor, coverage);
+            planId = await persistPlanToSupabase(currentUserId, plan);
+            await persistProgressToSupabase(currentUserId, topicCursor, coverage);
           }
         }
 
@@ -408,7 +415,7 @@ export function StudyProvider({ children }: { children: ReactNode }) {
         }
       } finally {
         if (!cancelled) {
-          setSyncingUserId((curr) => (curr === currentUser.id ? null : curr));
+          setSyncingUserId((curr) => (curr === currentUserId ? null : curr));
         }
       }
     }
@@ -418,12 +425,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [user]);
+  }, [userId]);
 
   // Ao retornar para a aba em uma nova semana, gera e persiste o próximo cronograma no Supabase.
   useEffect(() => {
-    if (!user) return;
-    const currentUser = user;
+    if (!userId) return;
+    const currentUserId = userId;
 
     const checkWeekRollover = async () => {
       const current = latestDataRef.current;
@@ -433,22 +440,30 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       if (!rolled.plan) return;
 
       try {
-        const planId = await persistPlanToSupabase(currentUser.id, rolled.plan);
-        await persistProgressToSupabase(currentUser.id, rolled.topicCursor, rolled.coverage);
+        const planId = await persistPlanToSupabase(currentUserId, rolled.plan);
+        await persistProgressToSupabase(currentUserId, rolled.topicCursor, rolled.coverage);
 
+        if (activeUserIdRef.current !== currentUserId) return;
         const nextData: StudyData = { ...rolled, planId };
-        writeJSON(`data:${currentUser.id}`, nextData);
-        setState({ key: `data:${currentUser.id}`, data: nextData });
+        writeJSON(`data:${currentUserId}`, nextData);
+        setState({ key: `data:${currentUserId}`, data: nextData });
       } catch (err) {
-        setSyncError(
-          translateAuthError(err as { message?: string; code?: string; status?: number }, 'Não foi possível atualizar o cronograma da nova semana.'),
-        );
+        if (activeUserIdRef.current === currentUserId) {
+          setSyncError(
+            translateAuthError(err as { message?: string; code?: string; status?: number }, 'Não foi possível atualizar o cronograma da nova semana.'),
+          );
+        }
       }
     };
 
     window.addEventListener('focus', checkWeekRollover);
     return () => window.removeEventListener('focus', checkWeekRollover);
-  }, [user]);
+  }, [userId]);
+
+  const enqueueSync = useCallback((task: () => Promise<void>) => {
+    syncQueueRef.current = syncQueueRef.current.then(task, task);
+    return syncQueueRef.current;
+  }, []);
 
   const saveOnboarding = useCallback<StudyContextValue['saveOnboarding']>(
     async (answers) => {
@@ -512,9 +527,9 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
   const toggleActivity = useCallback(
     (id: string) => {
-      if (!user) return;
-      const currentUser = user;
-      const key = `data:${currentUser.id}`;
+      if (!userId) return;
+      const currentUserId = userId;
+      const key = `data:${currentUserId}`;
       const prevData = latestDataRef.current;
       if (!prevData.plan) return;
 
@@ -557,23 +572,24 @@ export function StudyProvider({ children }: { children: ReactNode }) {
       writeJSON(key, nextData);
       setState({ key, data: nextData });
 
-      void (async () => {
+      const countForDate = studyLog[logDate] ?? 0;
+      const minutesForDate = studyMinutesLog[logDate] ?? 0;
+
+      void enqueueSync(async () => {
+        if (activeUserIdRef.current !== currentUserId) return;
         try {
           const { error: actError } = await supabase
             .from('study_activities')
             .update({ done: nextDone, done_at: nextDoneAt ?? null })
             .eq('id', id)
-            .eq('user_id', currentUser.id);
+            .eq('user_id', currentUserId);
 
           if (actError) throw actError;
-
-          const countForDate = studyLog[logDate] ?? 0;
-          const minutesForDate = studyMinutesLog[logDate] ?? 0;
 
           if (countForDate > 0) {
             const { error: logError } = await supabase.from('study_logs').upsert(
               {
-                user_id: currentUser.id,
+                user_id: currentUserId,
                 study_date: logDate,
                 completed_count: countForDate,
                 completed_minutes: minutesForDate,
@@ -585,11 +601,12 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             const { error: delLogError } = await supabase
               .from('study_logs')
               .delete()
-              .eq('user_id', currentUser.id)
+              .eq('user_id', currentUserId)
               .eq('study_date', logDate);
             if (delLogError) throw delLogError;
           }
         } catch (err) {
+          if (activeUserIdRef.current !== currentUserId) return;
           // Reverte atualização otimista se falhar no Supabase.
           writeJSON(key, prevData);
           setState({ key, data: prevData });
@@ -600,16 +617,16 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             ),
           );
         }
-      })();
+      });
     },
-    [user],
+    [enqueueSync, userId],
   );
 
   const moveActivity = useCallback(
     (id: string, toDay: number, toIndex: number) => {
-      if (!user) return;
-      const currentUser = user;
-      const key = `data:${currentUser.id}`;
+      if (!userId) return;
+      const currentUserId = userId;
+      const key = `data:${currentUserId}`;
       const prevData = latestDataRef.current;
       if (!prevData.plan) return;
 
@@ -651,7 +668,8 @@ export function StudyProvider({ children }: { children: ReactNode }) {
 
       if (changedUpdates.length === 0) return;
 
-      void (async () => {
+      void enqueueSync(async () => {
+        if (activeUserIdRef.current !== currentUserId) return;
         try {
           const results = await Promise.all(
             changedUpdates.map(({ a, idx }) =>
@@ -659,12 +677,13 @@ export function StudyProvider({ children }: { children: ReactNode }) {
                 .from('study_activities')
                 .update({ day_index: a.day, position: idx })
                 .eq('id', a.id)
-                .eq('user_id', currentUser.id),
+                .eq('user_id', currentUserId),
             ),
           );
           const failed = results.find((r) => r.error);
           if (failed?.error) throw failed.error;
         } catch (err) {
+          if (activeUserIdRef.current !== currentUserId) return;
           writeJSON(key, prevData);
           setState({ key, data: prevData });
           setSyncError(
@@ -674,15 +693,15 @@ export function StudyProvider({ children }: { children: ReactNode }) {
             ),
           );
         }
-      })();
+      });
     },
-    [user],
+    [enqueueSync, userId],
   );
 
   const clearSyncError = useCallback(() => setSyncError(''), []);
 
   const data = state.key === storageKey ? state.data : EMPTY;
-  const loading = Boolean(user && syncingUserId === user.id);
+  const loading = Boolean(userId && syncingUserId === userId);
 
   const value = useMemo(
     () => ({ data, loading, syncError, clearSyncError, saveOnboarding, toggleActivity, moveActivity }),
